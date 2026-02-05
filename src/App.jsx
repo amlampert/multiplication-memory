@@ -206,6 +206,12 @@ export default function App() {
   const [input, setInput] = useState("");
   const [feedback, setFeedback] = useState("");
 
+  // ✅ quick correct indicator
+  const [justCorrect, setJustCorrect] = useState(false);
+
+  // ✅ avoid immediate repeat
+  const lastQuestionKeyRef = useRef(null);
+
   // wrong modal
   const [wrongModalOpen, setWrongModalOpen] = useState(false);
   const [wrongModalFact, setWrongModalFact] = useState(null);
@@ -244,10 +250,10 @@ export default function App() {
     if (level == null) return;
     if (gameOver || celebrateOpen || wrongModalOpen) return;
     if (question) return;
-  
+
     setQuestion(pickRandomRemainingNew(level, newStatus) || pickRandomAny(level));
   }, [level, newStatus, question, gameOver, celebrateOpen, wrongModalOpen]);
-  
+
   useEffect(() => {
     if (
       !wrongModalOpen &&
@@ -260,7 +266,7 @@ export default function App() {
     }
   }, [wrongModalOpen, celebrateOpen, gameOver, level, question]);
 
-  // ---- Arm Enter for WRONG modal (prevents instant close on the same Enter used to submit)
+  // ---- Arm Enter for WRONG modal
   useEffect(() => {
     if (!wrongModalOpen) {
       setWrongEnterArmed(false);
@@ -292,7 +298,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wrongModalOpen, wrongEnterArmed, wrongModalFact]);
 
-  // ---- Arm Enter for CELEBRATE modal (prevents instant close)
+  // ---- Arm Enter for CELEBRATE modal
   useEffect(() => {
     if (!celebrateOpen) {
       setCelebrateEnterArmed(false);
@@ -330,7 +336,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [celebrateOpen, celebrateEnterArmed, celebrateNextLevel]);
 
-  // ---- Arm Enter for GAME OVER reset (also prevents instant fire)
+  // ---- Arm Enter for GAME OVER reset
   useEffect(() => {
     if (!gameOver) {
       setGameOverEnterArmed(false);
@@ -384,6 +390,8 @@ export default function App() {
     setCelebrateOpen(false);
     setCelebrateNextLevel(null);
     setGameOver(false);
+    setJustCorrect(false);
+    lastQuestionKeyRef.current = null;
   }
 
   function startAtLevel(lvl) {
@@ -396,7 +404,9 @@ export default function App() {
     setCorrections([]);
     setReviewQueue([]);
     setAlt(0);
-    setQuestion(pickRandomRemainingNew(clamped, ns) || pickRandomAny(clamped));
+    const firstQ = pickRandomRemainingNew(clamped, ns) || pickRandomAny(clamped);
+    setQuestion(firstQ);
+    lastQuestionKeyRef.current = firstQ ? keyFor(firstQ.a, firstQ.b) : null;
     setInput("");
     setFeedback("");
     setWrongModalOpen(false);
@@ -404,6 +414,7 @@ export default function App() {
     setCelebrateOpen(false);
     setCelebrateNextLevel(null);
     setGameOver(false);
+    setJustCorrect(false);
 
     saveState({
       level: clamped,
@@ -534,16 +545,38 @@ export default function App() {
     return pickRandomAny(nextLevel);
   }
 
+  // ✅ Avoid immediate repeat (except forced re-ask after wrong)
+  function chooseNonRepeatingQuestion(getCandidateFn, nextLevel) {
+    const lastKey = lastQuestionKeyRef.current;
+    let candidate = getCandidateFn(nextLevel);
+    if (!candidate) return candidate;
+
+    const candKey = keyFor(candidate.a, candidate.b);
+    if (!lastKey || candKey !== lastKey) return candidate;
+
+    // try a couple rerolls
+    for (let i = 0; i < 3; i++) {
+      const retry = getCandidateFn(nextLevel);
+      if (!retry) break;
+      const rk = keyFor(retry.a, retry.b);
+      if (rk !== lastKey) return retry;
+    }
+    return candidate;
+  }
+
   function nextQuestion(nextLevel = level) {
     if (nextLevel == null) return;
     const isNew = alt % 2 === 0;
+
     const q = isNew
-      ? pickNewLevelQuestion(nextLevel)
-      : pickReviewQuestion(nextLevel);
+      ? chooseNonRepeatingQuestion(pickNewLevelQuestion, nextLevel)
+      : chooseNonRepeatingQuestion(pickReviewQuestion, nextLevel);
+
     setAlt((x) => x + 1);
     setInput("");
     setFeedback("");
     setQuestion(q);
+    if (q) lastQuestionKeyRef.current = keyFor(q.a, q.b);
   }
 
   function tryGraduate(statusObj, correctionsList) {
@@ -573,9 +606,19 @@ export default function App() {
     const ns = buildNewStatus(nextLvl);
     setNewStatus(ns);
     setAlt(0);
-    setQuestion(pickRandomRemainingNew(nextLvl, ns) || pickRandomAny(nextLvl));
+
+    const q =
+      chooseNonRepeatingQuestion(
+        (lvl) => pickRandomRemainingNew(lvl, ns) || pickRandomAny(lvl),
+        nextLvl,
+      ) || (pickRandomRemainingNew(nextLvl, ns) || pickRandomAny(nextLvl));
+
+    setQuestion(q);
+    if (q) lastQuestionKeyRef.current = keyFor(q.a, q.b);
+
     setInput("");
     setFeedback("");
+    setJustCorrect(false);
   }
 
   function markChecklistCorrectIfApplicable(f, correctionsAfterThisSubmit) {
@@ -589,6 +632,11 @@ export default function App() {
     const updated = { ...newStatus, [k]: true };
     setNewStatus(updated);
     tryGraduate(updated, correctionsAfterThisSubmit);
+  }
+
+  function triggerCorrectFlash() {
+    setJustCorrect(true);
+    window.setTimeout(() => setJustCorrect(false), 260);
   }
 
   function submit() {
@@ -611,12 +659,19 @@ export default function App() {
       const nextCorrections = creditCorrectionPure(corrections, question);
       setCorrections(nextCorrections);
 
+      // ✅ visual indicator (even if next question ends up same fact)
+      triggerCorrectFlash();
+
       markChecklistCorrectIfApplicable(question, nextCorrections);
 
       setFeedback("✅ Correct!");
+
+      // remember last so nextQuestion avoids repeats
+      lastQuestionKeyRef.current = keyFor(question.a, question.b);
+
       nextQuestion(level);
     } else {
-      // ALWAYS show modal on wrong. (Now it can't instantly close from the same Enter.)
+      // ALWAYS show modal on wrong.
       playFail(ctx);
       updateMissedEverOnWrong(question);
 
@@ -630,6 +685,7 @@ export default function App() {
       setWrongModalFact(question);
       setWrongModalOpen(true);
       setFeedback("");
+      setJustCorrect(false);
     }
   }
 
@@ -641,7 +697,12 @@ export default function App() {
     playAction(getAudio());
     setWrongModalOpen(false);
     setInput("");
-    setQuestion(wrongModalFact); // immediate re-ask
+
+    // INTENTIONAL immediate re-ask (allowed to repeat)
+    setQuestion(wrongModalFact);
+    if (wrongModalFact)
+      lastQuestionKeyRef.current = keyFor(wrongModalFact.a, wrongModalFact.b);
+
     setWrongModalFact(null);
     setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -751,6 +812,11 @@ export default function App() {
 
         <div className="question centerText">
           {question?.a} × {question?.b} = ?
+        </div>
+
+        {/* ✅ quick "Correct!" indicator */}
+        <div className={`correctToast ${justCorrect ? "show" : ""}`} aria-live="polite">
+          ✅ Correct!
         </div>
 
         <div className="answerRow centerRow">
