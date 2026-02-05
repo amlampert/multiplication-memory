@@ -11,6 +11,8 @@
   --shadow: 0 12px 24px rgba(0,0,0,0.10);
 }
 
+*{ box-sizing: border-box; }
+
 .wrap{
   min-height: 100vh;
   padding: 22px;
@@ -54,6 +56,7 @@
   padding: 16px;
   box-shadow: var(--shadow);
   backdrop-filter: blur(6px);
+  overflow: hidden; /* ✅ keeps inner elements from leaking outside rounded corners */
 }
 
 .homeCard{
@@ -156,10 +159,13 @@
   display:flex;
   gap: 10px;
   align-items:center;
+  flex-wrap: wrap;            /* ✅ allow wrap */
 }
 
 .input{
   width: 240px;
+  max-width: 100%;            /* ✅ never exceed card */
+  flex: 1 1 180px;            /* ✅ responsive shrink */
   padding: 10px 12px;
   font-size: 18px;
   border-radius: 12px;
@@ -185,6 +191,7 @@
   justify-content:center;
   padding: 8px 14px;
   line-height: 1.05;
+  flex: 0 0 auto;
 }
 .checkBtnText{ font-weight: 900; }
 
@@ -382,11 +389,22 @@
   text-align:center;
 }
 
+/* ✅ Mobile fixes */
+@media (max-width: 420px){
+  .answerRow{
+    flex-direction: column;   /* stack input + button */
+    align-items: stretch;
+  }
+  .checkBtn{
+    width: 100%;
+  }
+}
+
 /* tighten on very small screens */
 @media (max-width: 375px){
   .wrap{ padding: 12px; }
   .question{ font-size: 40px; }
-  .input{ width: 170px; }
+  .input{ width: 100%; }
   .modalFact{ font-size: 20px; }
   .belowGrid{ gap: 10px; }
 }
