@@ -415,3 +415,26 @@
   .modalFact{ font-size: 20px; }
   .belowGrid{ gap: 10px; }
 }
+
+.correctToast{
+  height: 18px;
+  margin: 6px 0 10px;
+  text-align: center;
+  font-weight: 1000;
+  opacity: 0;
+  transform: translateY(2px) scale(0.98);
+  transition: opacity 120ms ease, transform 120ms ease;
+  pointer-events: none;
+}
+
+.correctToast.show{
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  animation: correctPop 260ms ease-out;
+}
+
+@keyframes correctPop{
+  0%   { transform: translateY(2px) scale(0.98); }
+  60%  { transform: translateY(-1px) scale(1.02); }
+  100% { transform: translateY(0) scale(1.00); }
+}
