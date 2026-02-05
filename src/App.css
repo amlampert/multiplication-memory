@@ -392,11 +392,18 @@
 /* ✅ Mobile fixes */
 @media (max-width: 420px){
   .answerRow{
-    flex-direction: column;   /* stack input + button */
-    align-items: stretch;
+    flex-direction: column;
+    align-items: center;              /* ✅ center */
   }
+
+  .input{
+    width: min(320px, 100%);          /* ✅ not huge */
+    flex: 0 0 auto;                   /* ✅ don’t stretch */
+  }
+
   .checkBtn{
-    width: 100%;
+    width: min(320px, 100%);          /* ✅ match input width */
+    margin: 0 auto;                   /* ✅ centered */
   }
 }
 
