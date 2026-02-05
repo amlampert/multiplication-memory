@@ -239,6 +239,15 @@ export default function App() {
     saveState({ level, newStatus, missedEver, corrections, reviewQueue, alt });
   }, [level, newStatus, missedEver, corrections, reviewQueue, alt]);
 
+  // ✅ Fix: after refresh, if we have a level but no current question, generate one.
+  useEffect(() => {
+    if (level == null) return;
+    if (gameOver || celebrateOpen || wrongModalOpen) return;
+    if (question) return;
+  
+    setQuestion(pickRandomRemainingNew(level, newStatus) || pickRandomAny(level));
+  }, [level, newStatus, question, gameOver, celebrateOpen, wrongModalOpen]);
+  
   useEffect(() => {
     if (
       !wrongModalOpen &&
