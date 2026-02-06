@@ -206,11 +206,15 @@ export default function App() {
   const [input, setInput] = useState("");
   const [feedback, setFeedback] = useState("");
 
-  // ✅ quick correct indicator
+  // quick correct indicator
   const [justCorrect, setJustCorrect] = useState(false);
 
-  // ✅ avoid immediate repeat
+  // ---- NO BACK-TO-BACK REPEATS (except the intentional immediate re-ask after a miss) ----
   const lastQuestionKeyRef = useRef(null);
+
+  // After the immediate re-ask, force the next normal question to be NEW.
+  // This avoids: re-ask -> scheduled review repeat of the same fact back-to-back.
+  const forceNextIsNewRef = useRef(false);
 
   // wrong modal
   const [wrongModalOpen, setWrongModalOpen] = useState(false);
@@ -251,7 +255,9 @@ export default function App() {
     if (gameOver || celebrateOpen || wrongModalOpen) return;
     if (question) return;
 
-    setQuestion(pickRandomRemainingNew(level, newStatus) || pickRandomAny(level));
+    const q = pickRandomRemainingNew(level, newStatus) || pickRandomAny(level);
+    setQuestion(q);
+    lastQuestionKeyRef.current = q ? keyFor(q.a, q.b) : null;
   }, [level, newStatus, question, gameOver, celebrateOpen, wrongModalOpen]);
 
   useEffect(() => {
@@ -392,6 +398,7 @@ export default function App() {
     setGameOver(false);
     setJustCorrect(false);
     lastQuestionKeyRef.current = null;
+    forceNextIsNewRef.current = false;
   }
 
   function startAtLevel(lvl) {
@@ -404,9 +411,11 @@ export default function App() {
     setCorrections([]);
     setReviewQueue([]);
     setAlt(0);
-    const firstQ = pickRandomRemainingNew(clamped, ns) || pickRandomAny(clamped);
-    setQuestion(firstQ);
-    lastQuestionKeyRef.current = firstQ ? keyFor(firstQ.a, firstQ.b) : null;
+
+    const q = pickRandomRemainingNew(clamped, ns) || pickRandomAny(clamped);
+    setQuestion(q);
+    lastQuestionKeyRef.current = q ? keyFor(q.a, q.b) : null;
+
     setInput("");
     setFeedback("");
     setWrongModalOpen(false);
@@ -415,6 +424,7 @@ export default function App() {
     setCelebrateNextLevel(null);
     setGameOver(false);
     setJustCorrect(false);
+    forceNextIsNewRef.current = false;
 
     saveState({
       level: clamped,
@@ -455,7 +465,8 @@ export default function App() {
   function scheduleCurrentLevelRepeats(f) {
     const k = keyFor(f.a, f.b);
     let q = reviewQueue.filter(
-      (x) => !(x.key === k && x.activateAtLevel === level && x.hidden !== true),
+      (x) =>
+        !(x.key === k && x.activateAtLevel === level && x.hidden !== true),
     );
     for (let i = 1; i <= CURRENT_REVIEW_REPEATS; i++) {
       q.push({
@@ -492,6 +503,7 @@ export default function App() {
     setReviewQueue(q);
   }
 
+  // Returns a fact if due. Also returns the underlying "hidden" flag so we can keep behavior predictable.
   function popDueReviewItem() {
     const q0 = [...reviewQueue];
     const q1 = q0.map((x) =>
@@ -519,7 +531,11 @@ export default function App() {
     const due = q1[idx];
     q1.splice(idx, 1);
     setReviewQueue(q1);
-    return makeFact(due.a, due.b);
+
+    return {
+      fact: makeFact(due.a, due.b),
+      hidden: !!due.hidden,
+    };
   }
 
   function pickNewLevelQuestion(nextLevel) {
@@ -530,7 +546,7 @@ export default function App() {
 
   function pickReviewQuestion(nextLevel) {
     const due = popDueReviewItem();
-    if (due) return due;
+    if (due?.fact) return { ...due.fact, __fromQueue: true, __hidden: due.hidden };
 
     if (corrections.length > 0) {
       const pick = corrections[randomInt(0, corrections.length - 1)];
@@ -545,32 +561,57 @@ export default function App() {
     return pickRandomAny(nextLevel);
   }
 
-  // ✅ Avoid immediate repeat (except forced re-ask after wrong)
-  function chooseNonRepeatingQuestion(getCandidateFn, nextLevel) {
+  // HARD GUARANTEE: do not allow the next normal question to equal the previous question.
+  // The ONLY exception is the intentional immediate re-ask, which is not chosen by this function.
+  function chooseNonBackToBack(getCandidateFn, nextLevel) {
     const lastKey = lastQuestionKeyRef.current;
-    let candidate = getCandidateFn(nextLevel);
-    if (!candidate) return candidate;
 
-    const candKey = keyFor(candidate.a, candidate.b);
-    if (!lastKey || candKey !== lastKey) return candidate;
-
-    // try a couple rerolls
-    for (let i = 0; i < 3; i++) {
-      const retry = getCandidateFn(nextLevel);
-      if (!retry) break;
-      const rk = keyFor(retry.a, retry.b);
-      if (rk !== lastKey) return retry;
+    // Try multiple times to avoid a back-to-back repeat.
+    // (If the pool is tiny, we still must return something; see fallback.)
+    for (let tries = 0; tries < 12; tries++) {
+      const c = getCandidateFn(nextLevel);
+      if (!c) return c;
+      const ck = keyFor(c.a, c.b);
+      if (!lastKey || ck !== lastKey) return c;
     }
-    return candidate;
+
+    // Fallback: if we somehow couldn't find a different one, pick a deterministic alternative.
+    // For NEW questions: walk remaining keys; for REVIEW: pick any that isn't last (if possible).
+    const last = lastKey;
+    if (!last) return getCandidateFn(nextLevel);
+
+    // Try to find any NEW fact not equal to last:
+    const remainingNew = Object.keys(newStatus || {}).filter((k) => newStatus[k] === false);
+    const anyNew = remainingNew.find((k) => k !== last);
+    if (anyNew) {
+      const [aStr, bStr] = anyNew.split("x");
+      return makeFact(Number(aStr), Number(bStr));
+    }
+
+    // Try a few randomAny picks avoiding last:
+    for (let tries = 0; tries < 24; tries++) {
+      const r = pickRandomAny(nextLevel);
+      if (keyFor(r.a, r.b) !== last) return r;
+    }
+
+    // Absolute last resort (should be extremely rare): return whatever we have.
+    return getCandidateFn(nextLevel);
   }
 
   function nextQuestion(nextLevel = level) {
     if (nextLevel == null) return;
-    const isNew = alt % 2 === 0;
+
+    let isNew = alt % 2 === 0;
+
+    // After the intentional immediate re-ask, force NEW next.
+    if (forceNextIsNewRef.current) {
+      isNew = true;
+      forceNextIsNewRef.current = false;
+    }
 
     const q = isNew
-      ? chooseNonRepeatingQuestion(pickNewLevelQuestion, nextLevel)
-      : chooseNonRepeatingQuestion(pickReviewQuestion, nextLevel);
+      ? chooseNonBackToBack(pickNewLevelQuestion, nextLevel)
+      : chooseNonBackToBack(pickReviewQuestion, nextLevel);
 
     setAlt((x) => x + 1);
     setInput("");
@@ -582,9 +623,7 @@ export default function App() {
   function tryGraduate(statusObj, correctionsList) {
     if (!allDone(statusObj)) return;
     if ((correctionsList || []).length > 0) {
-      setFeedback(
-        "✅ Checklist done — finish Current Corrections to graduate.",
-      );
+      setFeedback("✅ Checklist done — finish Current Corrections to graduate.");
       return;
     }
 
@@ -608,8 +647,8 @@ export default function App() {
     setAlt(0);
 
     const q =
-      chooseNonRepeatingQuestion(
-        (lvl) => pickRandomRemainingNew(lvl, ns) || pickRandomAny(lvl),
+      chooseNonBackToBack(
+        () => pickRandomRemainingNew(nextLvl, ns) || pickRandomAny(nextLvl),
         nextLvl,
       ) || (pickRandomRemainingNew(nextLvl, ns) || pickRandomAny(nextLvl));
 
@@ -619,6 +658,7 @@ export default function App() {
     setInput("");
     setFeedback("");
     setJustCorrect(false);
+    forceNextIsNewRef.current = false;
   }
 
   function markChecklistCorrectIfApplicable(f, correctionsAfterThisSubmit) {
@@ -656,22 +696,35 @@ export default function App() {
       playSuccess(ctx);
       updateMissedEverOnRight(question);
 
+      const k = keyFor(question.a, question.b);
+      const wasInCorrections = corrections.some((c) => c.key === k);
+
       const nextCorrections = creditCorrectionPure(corrections, question);
       setCorrections(nextCorrections);
 
-      // ✅ visual indicator (even if next question ends up same fact)
-      triggerCorrectFlash();
+      // If correction completed now, remove remaining current-level repeats (keep hidden next-level repeats).
+      const stillInCorrections = nextCorrections.some((c) => c.key === k);
+      if (wasInCorrections && !stillInCorrections) {
+        setReviewQueue((prev) =>
+          prev.filter(
+            (x) =>
+              !(
+                x.key === k &&
+                x.activateAtLevel === level &&
+                x.hidden === false
+              ),
+          ),
+        );
+      }
 
+      triggerCorrectFlash();
       markChecklistCorrectIfApplicable(question, nextCorrections);
 
       setFeedback("✅ Correct!");
-
-      // remember last so nextQuestion avoids repeats
-      lastQuestionKeyRef.current = keyFor(question.a, question.b);
+      lastQuestionKeyRef.current = k;
 
       nextQuestion(level);
     } else {
-      // ALWAYS show modal on wrong.
       playFail(ctx);
       updateMissedEverOnWrong(question);
 
@@ -698,8 +751,11 @@ export default function App() {
     setWrongModalOpen(false);
     setInput("");
 
-    // INTENTIONAL immediate re-ask (allowed to repeat)
-    setQuestion(wrongModalFact);
+    // Allow the immediate re-ask (this is the ONLY allowed back-to-back repeat).
+    // Then force NEW on the next normal question so we don't do: re-ask -> same review repeat immediately.
+    forceNextIsNewRef.current = true;
+
+    setQuestion(wrongModalFact); // immediate re-ask (ONLY after miss)
     if (wrongModalFact)
       lastQuestionKeyRef.current = keyFor(wrongModalFact.a, wrongModalFact.b);
 
@@ -814,8 +870,10 @@ export default function App() {
           {question?.a} × {question?.b} = ?
         </div>
 
-        {/* ✅ quick "Correct!" indicator */}
-        <div className={`correctToast ${justCorrect ? "show" : ""}`} aria-live="polite">
+        <div
+          className={`correctToast ${justCorrect ? "show" : ""}`}
+          aria-live="polite"
+        >
           ✅ Correct!
         </div>
 
