@@ -478,3 +478,73 @@
   padding: 14px 12px;
   border-radius: 14px;
 }
+
+/* Add to the end of App.css */
+
+/* ---------- Keypad ---------- */
+.keypad {
+  width: 100%;
+  max-width: 330px;
+  margin: 10px auto 0;
+}
+
+.kpGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.kpBtn {
+  padding: 10px 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.kpBtn:disabled {
+  opacity: 0.6;
+}
+
+.kpWide {
+  font-size: 14px;
+}
+
+/* ---------- Mobile tightening ---------- */
+@media (max-width: 420px) {
+  .centerTop {
+    padding-top: 4px;
+    margin-top: 0;
+  }
+
+  .logoTop {
+    height: 22px; /* smaller logo */
+    margin-top: -2px; /* move up a bit */
+    margin-bottom: 4px;
+  }
+
+  .gameTitle {
+    font-size: 18px;
+    margin-bottom: 8px;
+  }
+
+  /* reduce space between question and answer row */
+  .question {
+    margin-bottom: 8px !important;
+  }
+
+  .answerRow {
+    margin-top: 6px !important;
+  }
+
+  .keypad {
+    margin-top: 8px;
+  }
+
+  .kpBtn {
+    padding: 9px 6px;
+    border-radius: 11px;
+    font-size: 17px;
+  }
+}
