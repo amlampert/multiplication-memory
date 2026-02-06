@@ -155,7 +155,7 @@ function isCoarsePointer() {
   );
 }
 
-function Keypad({ onDigit, onBackspace, onClear, onSubmit, disabled }) {
+function Keypad({ onDigit, onBackspace, onClear, disabled }) {
   const btn = (label, onClick, extraClass = "") => (
     <button
       type="button"
@@ -185,10 +185,6 @@ function Keypad({ onDigit, onBackspace, onClear, onSubmit, disabled }) {
         {btn("Clear", onClear, "kpWide")}
         {btn("0", () => onDigit("0"))}
         {btn("⌫", onBackspace)}
-      </div>
-
-      <div className="kpSubmitRow">
-        {btn("Check", onSubmit, "kpSubmit")}
       </div>
     </div>
   );
@@ -259,8 +255,6 @@ export default function App() {
 
   // ---- NO BACK-TO-BACK REPEATS (except the intentional immediate re-ask after a miss) ----
   const lastQuestionKeyRef = useRef(null);
-
-  // After the immediate re-ask, force the next normal question to be NEW.
   const forceNextIsNewRef = useRef(false);
 
   // wrong modal
@@ -323,12 +317,6 @@ export default function App() {
     kpActionSound();
     setInput("");
     inputRef.current?.blur();
-  }
-
-  function kpSubmit() {
-    if (wrongModalOpen || celebrateOpen) return;
-    kpActionSound();
-    submit();
   }
 
   useEffect(() => {
@@ -630,7 +618,8 @@ export default function App() {
 
   function pickReviewQuestion(nextLevel) {
     const due = popDueReviewItem();
-    if (due?.fact) return { ...due.fact, __fromQueue: true, __hidden: due.hidden };
+    if (due?.fact)
+      return { ...due.fact, __fromQueue: true, __hidden: due.hidden };
 
     if (corrections.length > 0) {
       const pick = corrections[randomInt(0, corrections.length - 1)];
@@ -645,8 +634,6 @@ export default function App() {
     return pickRandomAny(nextLevel);
   }
 
-  // HARD GUARANTEE: do not allow the next normal question to equal the previous question.
-  // The ONLY exception is the intentional immediate re-ask after a miss.
   function chooseNonBackToBack(getCandidateFn, nextLevel) {
     const lastKey = lastQuestionKeyRef.current;
 
@@ -757,6 +744,26 @@ export default function App() {
     window.setTimeout(() => setJustCorrect(false), 260);
   }
 
+  function creditCorrectionEntryAndCleanup(correctionsList, fact, wasInCorrections) {
+    const k = keyFor(fact.a, fact.b);
+    const nextCorrections = creditCorrectionPure(correctionsList, fact);
+
+    const stillInCorrections = nextCorrections.some((c) => c.key === k);
+    if (wasInCorrections && !stillInCorrections) {
+      setReviewQueue((prev) =>
+        prev.filter(
+          (x) =>
+            !(
+              x.key === k &&
+              x.activateAtLevel === level &&
+              x.hidden === false
+            ),
+        ),
+      );
+    }
+    return nextCorrections;
+  }
+
   function submit() {
     if (!question || level == null) return;
     const trimmed = input.trim();
@@ -777,7 +784,11 @@ export default function App() {
       const k = keyFor(question.a, question.b);
       const wasInCorrections = corrections.some((c) => c.key === k);
 
-      const nextCorrections = creditCorrectionEntryAndCleanup(corrections, question, wasInCorrections);
+      const nextCorrections = creditCorrectionEntryAndCleanup(
+        corrections,
+        question,
+        wasInCorrections,
+      );
       setCorrections(nextCorrections);
 
       triggerCorrectFlash();
@@ -803,27 +814,6 @@ export default function App() {
       setFeedback("");
       setJustCorrect(false);
     }
-  }
-
-  // helper: credit correction and remove leftover current-level repeats when completed
-  function creditCorrectionEntryAndCleanup(correctionsList, fact, wasInCorrections) {
-    const k = keyFor(fact.a, fact.b);
-    const nextCorrections = creditCorrectionPure(correctionsList, fact);
-
-    const stillInCorrections = nextCorrections.some((c) => c.key === k);
-    if (wasInCorrections && !stillInCorrections) {
-      setReviewQueue((prev) =>
-        prev.filter(
-          (x) =>
-            !(
-              x.key === k &&
-              x.activateAtLevel === level &&
-              x.hidden === false
-            ),
-        ),
-      );
-    }
-    return nextCorrections;
   }
 
   function onKeyDown(e) {
@@ -991,7 +981,6 @@ export default function App() {
             onDigit={kpDigit}
             onBackspace={kpBackspace}
             onClear={kpClear}
-            onSubmit={kpSubmit}
             disabled={wrongModalOpen || celebrateOpen}
           />
         )}
