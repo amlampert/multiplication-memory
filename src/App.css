@@ -438,3 +438,43 @@
   60%  { transform: translateY(-1px) scale(1.02); }
   100% { transform: translateY(0) scale(1.00); }
 }
+
+.keypad {
+  width: 100%;
+  max-width: 360px;
+  margin: 12px auto 0;
+}
+
+.kpGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.kpBtn {
+  padding: 12px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,0.12);
+  background: rgba(255,255,255,0.9);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.kpBtn:disabled {
+  opacity: 0.6;
+}
+
+.kpWide {
+  grid-column: span 1;
+  font-size: 14px;
+}
+
+.kpSubmitRow {
+  margin-top: 10px;
+}
+
+.kpSubmit {
+  width: 100%;
+  padding: 14px 12px;
+  border-radius: 14px;
+}
