@@ -146,6 +146,54 @@ function playAction(ctx) {
   setTimeout(() => beep(ctx, 740, 45, "triangle", 0.018), 35);
 }
 
+/* ------------------ mobile keypad ------------------ */
+function isCoarsePointer() {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia &&
+    window.matchMedia("(pointer: coarse)").matches
+  );
+}
+
+function Keypad({ onDigit, onBackspace, onClear, onSubmit, disabled }) {
+  const btn = (label, onClick, extraClass = "") => (
+    <button
+      type="button"
+      className={`kpBtn ${extraClass}`}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <div className="keypad" aria-label="Number keypad">
+      <div className="kpGrid">
+        {btn("1", () => onDigit("1"))}
+        {btn("2", () => onDigit("2"))}
+        {btn("3", () => onDigit("3"))}
+
+        {btn("4", () => onDigit("4"))}
+        {btn("5", () => onDigit("5"))}
+        {btn("6", () => onDigit("6"))}
+
+        {btn("7", () => onDigit("7"))}
+        {btn("8", () => onDigit("8"))}
+        {btn("9", () => onDigit("9"))}
+
+        {btn("Clear", onClear, "kpWide")}
+        {btn("0", () => onDigit("0"))}
+        {btn("⌫", onBackspace)}
+      </div>
+
+      <div className="kpSubmitRow">
+        {btn("Check", onSubmit, "kpSubmit")}
+      </div>
+    </div>
+  );
+}
+
 /* ------------------ correction pure updates ------------------ */
 function ensureCorrectionEntryPure(corrections, fact) {
   const k = keyFor(fact.a, fact.b);
@@ -213,7 +261,6 @@ export default function App() {
   const lastQuestionKeyRef = useRef(null);
 
   // After the immediate re-ask, force the next normal question to be NEW.
-  // This avoids: re-ask -> scheduled review repeat of the same fact back-to-back.
   const forceNextIsNewRef = useRef(false);
 
   // wrong modal
@@ -236,12 +283,52 @@ export default function App() {
   const inputRef = useRef(null);
   const audioRef = useRef(null);
 
+  // mobile keypad preference
+  const [useKeypad, setUseKeypad] = useState(() => isCoarsePointer());
+
   function getAudio() {
     if (!audioRef.current)
       audioRef.current = new (window.AudioContext ||
         window.webkitAudioContext)();
     audioRef.current.resume?.();
     return audioRef.current;
+  }
+
+  useEffect(() => {
+    const onResize = () => setUseKeypad(isCoarsePointer());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  function kpActionSound() {
+    playAction(getAudio());
+  }
+
+  function kpDigit(d) {
+    if (wrongModalOpen || celebrateOpen) return;
+    kpActionSound();
+    setInput((prev) => (prev + d).slice(0, 4));
+    inputRef.current?.blur();
+  }
+
+  function kpBackspace() {
+    if (wrongModalOpen || celebrateOpen) return;
+    kpActionSound();
+    setInput((prev) => prev.slice(0, -1));
+    inputRef.current?.blur();
+  }
+
+  function kpClear() {
+    if (wrongModalOpen || celebrateOpen) return;
+    kpActionSound();
+    setInput("");
+    inputRef.current?.blur();
+  }
+
+  function kpSubmit() {
+    if (wrongModalOpen || celebrateOpen) return;
+    kpActionSound();
+    submit();
   }
 
   useEffect(() => {
@@ -266,11 +353,12 @@ export default function App() {
       !celebrateOpen &&
       !gameOver &&
       level != null &&
-      inputRef.current
+      inputRef.current &&
+      !useKeypad
     ) {
       inputRef.current.focus();
     }
-  }, [wrongModalOpen, celebrateOpen, gameOver, level, question]);
+  }, [wrongModalOpen, celebrateOpen, gameOver, level, question, useKeypad]);
 
   // ---- Arm Enter for WRONG modal
   useEffect(() => {
@@ -503,7 +591,6 @@ export default function App() {
     setReviewQueue(q);
   }
 
-  // Returns a fact if due. Also returns the underlying "hidden" flag so we can keep behavior predictable.
   function popDueReviewItem() {
     const q0 = [...reviewQueue];
     const q1 = q0.map((x) =>
@@ -532,10 +619,7 @@ export default function App() {
     q1.splice(idx, 1);
     setReviewQueue(q1);
 
-    return {
-      fact: makeFact(due.a, due.b),
-      hidden: !!due.hidden,
-    };
+    return { fact: makeFact(due.a, due.b), hidden: !!due.hidden };
   }
 
   function pickNewLevelQuestion(nextLevel) {
@@ -562,12 +646,10 @@ export default function App() {
   }
 
   // HARD GUARANTEE: do not allow the next normal question to equal the previous question.
-  // The ONLY exception is the intentional immediate re-ask, which is not chosen by this function.
+  // The ONLY exception is the intentional immediate re-ask after a miss.
   function chooseNonBackToBack(getCandidateFn, nextLevel) {
     const lastKey = lastQuestionKeyRef.current;
 
-    // Try multiple times to avoid a back-to-back repeat.
-    // (If the pool is tiny, we still must return something; see fallback.)
     for (let tries = 0; tries < 12; tries++) {
       const c = getCandidateFn(nextLevel);
       if (!c) return c;
@@ -575,26 +657,23 @@ export default function App() {
       if (!lastKey || ck !== lastKey) return c;
     }
 
-    // Fallback: if we somehow couldn't find a different one, pick a deterministic alternative.
-    // For NEW questions: walk remaining keys; for REVIEW: pick any that isn't last (if possible).
     const last = lastKey;
     if (!last) return getCandidateFn(nextLevel);
 
-    // Try to find any NEW fact not equal to last:
-    const remainingNew = Object.keys(newStatus || {}).filter((k) => newStatus[k] === false);
+    const remainingNew = Object.keys(newStatus || {}).filter(
+      (k) => newStatus[k] === false,
+    );
     const anyNew = remainingNew.find((k) => k !== last);
     if (anyNew) {
       const [aStr, bStr] = anyNew.split("x");
       return makeFact(Number(aStr), Number(bStr));
     }
 
-    // Try a few randomAny picks avoiding last:
     for (let tries = 0; tries < 24; tries++) {
       const r = pickRandomAny(nextLevel);
       if (keyFor(r.a, r.b) !== last) return r;
     }
 
-    // Absolute last resort (should be extremely rare): return whatever we have.
     return getCandidateFn(nextLevel);
   }
 
@@ -603,7 +682,6 @@ export default function App() {
 
     let isNew = alt % 2 === 0;
 
-    // After the intentional immediate re-ask, force NEW next.
     if (forceNextIsNewRef.current) {
       isNew = true;
       forceNextIsNewRef.current = false;
@@ -699,23 +777,8 @@ export default function App() {
       const k = keyFor(question.a, question.b);
       const wasInCorrections = corrections.some((c) => c.key === k);
 
-      const nextCorrections = creditCorrectionPure(corrections, question);
+      const nextCorrections = creditCorrectionEntryAndCleanup(corrections, question, wasInCorrections);
       setCorrections(nextCorrections);
-
-      // If correction completed now, remove remaining current-level repeats (keep hidden next-level repeats).
-      const stillInCorrections = nextCorrections.some((c) => c.key === k);
-      if (wasInCorrections && !stillInCorrections) {
-        setReviewQueue((prev) =>
-          prev.filter(
-            (x) =>
-              !(
-                x.key === k &&
-                x.activateAtLevel === level &&
-                x.hidden === false
-              ),
-          ),
-        );
-      }
 
       triggerCorrectFlash();
       markChecklistCorrectIfApplicable(question, nextCorrections);
@@ -742,6 +805,27 @@ export default function App() {
     }
   }
 
+  // helper: credit correction and remove leftover current-level repeats when completed
+  function creditCorrectionEntryAndCleanup(correctionsList, fact, wasInCorrections) {
+    const k = keyFor(fact.a, fact.b);
+    const nextCorrections = creditCorrectionPure(correctionsList, fact);
+
+    const stillInCorrections = nextCorrections.some((c) => c.key === k);
+    if (wasInCorrections && !stillInCorrections) {
+      setReviewQueue((prev) =>
+        prev.filter(
+          (x) =>
+            !(
+              x.key === k &&
+              x.activateAtLevel === level &&
+              x.hidden === false
+            ),
+        ),
+      );
+    }
+    return nextCorrections;
+  }
+
   function onKeyDown(e) {
     if (e.key === "Enter") submit();
   }
@@ -751,8 +835,6 @@ export default function App() {
     setWrongModalOpen(false);
     setInput("");
 
-    // Allow the immediate re-ask (this is the ONLY allowed back-to-back repeat).
-    // Then force NEW on the next normal question so we don't do: re-ask -> same review repeat immediately.
     forceNextIsNewRef.current = true;
 
     setQuestion(wrongModalFact); // immediate re-ask (ONLY after miss)
@@ -760,7 +842,8 @@ export default function App() {
       lastQuestionKeyRef.current = keyFor(wrongModalFact.a, wrongModalFact.b);
 
     setWrongModalFact(null);
-    setTimeout(() => inputRef.current?.focus(), 0);
+
+    if (!useKeypad) setTimeout(() => inputRef.current?.focus(), 0);
   }
 
   function closeCelebrate() {
@@ -884,7 +967,11 @@ export default function App() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
-            inputMode="numeric"
+            inputMode={useKeypad ? "none" : "numeric"}
+            readOnly={useKeypad}
+            onFocus={() => {
+              if (useKeypad) inputRef.current?.blur();
+            }}
             placeholder="Type answer"
             aria-label="Answer"
             disabled={wrongModalOpen || celebrateOpen}
@@ -898,6 +985,16 @@ export default function App() {
             <div className="tinyNote">[Enter]</div>
           </button>
         </div>
+
+        {useKeypad && (
+          <Keypad
+            onDigit={kpDigit}
+            onBackspace={kpBackspace}
+            onClear={kpClear}
+            onSubmit={kpSubmit}
+            disabled={wrongModalOpen || celebrateOpen}
+          />
+        )}
 
         <div className="feedback centerText">{feedback}</div>
       </div>
