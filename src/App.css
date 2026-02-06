@@ -21,6 +21,7 @@
   color: var(--black);
 }
 
+/* ---------- Header ---------- */
 .centerTop{
   display:flex;
   flex-direction:column;
@@ -44,6 +45,7 @@
   text-align:center;
 }
 
+/* ---------- Cards / Layout ---------- */
 .centerCard{
   max-width: 860px;
   margin: 0 auto;
@@ -56,7 +58,7 @@
   padding: 16px;
   box-shadow: var(--shadow);
   backdrop-filter: blur(6px);
-  overflow: hidden; /* ✅ keeps inner elements from leaking outside rounded corners */
+  overflow: hidden; /* keeps inner elements from leaking outside rounded corners */
 }
 
 .homeCard{
@@ -64,9 +66,20 @@
   margin: 0 auto;
 }
 
+.mainCard{
+  margin-top: 6px;
+  margin-bottom: 14px;
+}
+
+.missedCard{
+  max-width: 860px;
+  margin: 0 auto 12px;
+}
+
 .centerText{ text-align:center; }
 .centerRow{ justify-content:center; }
 
+/* ---------- Home ---------- */
 .sub{
   margin-top: 6px;
   color: rgba(26,26,26,0.75);
@@ -87,6 +100,7 @@
   margin-top: 10px;
 }
 
+/* ---------- Buttons ---------- */
 .btn{
   border: 1px solid rgba(2,60,61,0.26);
   background: rgba(2,60,61,0.06);
@@ -97,9 +111,7 @@
   font-weight: 900;
 }
 
-.btn:hover{
-  background: rgba(2,60,61,0.10);
-}
+.btn:hover{ background: rgba(2,60,61,0.10); }
 
 .btn:disabled{
   opacity: 0.55;
@@ -111,9 +123,7 @@
   background: rgba(2,60,61,0.14);
 }
 
-.primary:hover{
-  background: rgba(2,60,61,0.20);
-}
+.primary:hover{ background: rgba(2,60,61,0.20); }
 
 .levelBtn{
   min-width: 42px;
@@ -121,6 +131,27 @@
   padding: 8px 10px;
 }
 
+/* Check button with tiny text */
+.checkBtn{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding: 8px 14px;
+  line-height: 1.05;
+  flex: 0 0 auto;
+}
+
+.checkBtnText{ font-weight: 900; }
+
+.tinyNote{
+  margin-top: 6px;
+  font-size: 11px;
+  color: rgba(26,26,26,0.55);
+  font-weight: 800;
+}
+
+/* ---------- Meta / Question ---------- */
 .metaRow{
   display:flex;
   gap:10px;
@@ -142,11 +173,6 @@
   font-weight: 800;
 }
 
-.mainCard{
-  margin-top: 6px;
-  margin-bottom: 14px;
-}
-
 .question{
   font-size: 52px;
   font-weight: 1100;
@@ -159,13 +185,13 @@
   display:flex;
   gap: 10px;
   align-items:center;
-  flex-wrap: wrap;            /* ✅ allow wrap */
+  flex-wrap: wrap; /* allow wrap */
 }
 
 .input{
   width: 240px;
-  max-width: 100%;            /* ✅ never exceed card */
-  flex: 1 1 180px;            /* ✅ responsive shrink */
+  max-width: 100%;
+  flex: 1 1 180px;
   padding: 10px 12px;
   font-size: 18px;
   border-radius: 12px;
@@ -183,26 +209,31 @@
   color: rgba(26,26,26,0.72);
 }
 
-/* Check button with tiny text */
-.checkBtn{
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  padding: 8px 14px;
-  line-height: 1.05;
-  flex: 0 0 auto;
-}
-.checkBtnText{ font-weight: 900; }
-
-.tinyNote{
-  margin-top: 6px;
-  font-size: 11px;
-  color: rgba(26,26,26,0.55);
-  font-weight: 800;
+/* ---------- Correct toast ---------- */
+.correctToast{
+  height: 18px;
+  margin: 6px 0 10px;
+  text-align: center;
+  font-weight: 1000;
+  opacity: 0;
+  transform: translateY(2px) scale(0.98);
+  transition: opacity 120ms ease, transform 120ms ease;
+  pointer-events: none;
 }
 
-/* 2 columns always */
+.correctToast.show{
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  animation: correctPop 260ms ease-out;
+}
+
+@keyframes correctPop{
+  0%   { transform: translateY(2px) scale(0.98); }
+  60%  { transform: translateY(-1px) scale(1.02); }
+  100% { transform: translateY(0) scale(1.00); }
+}
+
+/* ---------- 2-column below section ---------- */
 .belowGrid{
   max-width: 860px;
   margin: 0 auto 14px;
@@ -298,7 +329,7 @@
   background: rgba(195,228,218,0.55);
 }
 
-/* Corrections styling */
+/* ---------- Corrections styling ---------- */
 .negTitle{ color: var(--orange); }
 .negRow{ border-color: rgba(226,63,26,0.35); }
 .negRow.corr0{ background: rgba(226,63,26,0.30); }
@@ -315,12 +346,37 @@
 .negBadge.corr2{ background: rgba(255,203,186,0.68); }
 .negBadge.corr3{ background: rgba(255,203,186,0.54); }
 
-.missedCard{
-  max-width: 860px;
-  margin: 0 auto 12px;
+/* ---------- Keypad (single definition) ---------- */
+.keypad{
+  width: 100%;
+  max-width: 330px;
+  margin: 10px auto 0;
+  padding-bottom: 0;
 }
 
-/* Modals (fix iPhone SE width) */
+.kpGrid{
+  display:grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+.kpBtn{
+  padding: 10px 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,0.12);
+  background: rgba(255,255,255,0.90);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.kpBtn:disabled{ opacity: 0.6; }
+
+.kpWide{
+  font-size: 14px;
+}
+
+/* ---------- Modals (fix iPhone SE width) ---------- */
 .modalOverlay{
   position:fixed;
   inset:0;
@@ -331,7 +387,7 @@
 }
 
 .modal{
-  width: min(520px, calc(100vw - 28px)); /* ✅ narrow screens */
+  width: min(520px, calc(100vw - 28px));
   border-radius: 18px;
   border: 1px solid rgba(2,60,61,0.22);
   padding: 14px;
@@ -385,166 +441,78 @@
 }
 
 /* game over */
-.gameOver{
-  text-align:center;
-}
+.gameOver{ text-align:center; }
 
-/* ✅ Mobile fixes */
+/* ---------- Mobile ---------- */
 @media (max-width: 420px){
+  .centerTop{
+    margin-top: 0;
+    margin-bottom: 8px;
+    gap: 6px;
+  }
+
+  .logoTop{
+    height: 22px;       /* smaller logo */
+    margin-top: -2px;   /* nudge up */
+    margin-bottom: 0;
+  }
+
+  .gameTitle{
+    font-size: 18px;
+    margin-bottom: 4px;
+  }
+
   .answerRow{
     flex-direction: column;
-    align-items: center;              /* ✅ center */
+    align-items: center;
+  }
+
+  .question{
+    font-size: 40px;
+    margin: 6px 0 6px;  /* tighter question -> input */
+  }
+
+  .correctToast{
+    margin: 4px 0 6px;  /* tighter toast spacing */
   }
 
   .input{
-    width: min(320px, 100%);          /* ✅ not huge */
-    flex: 0 0 auto;                   /* ✅ don’t stretch */
+    width: min(320px, 100%);
+    flex: 0 0 auto;
   }
 
   .checkBtn{
-    width: min(320px, 100%);          /* ✅ match input width */
-    margin: 0 auto;                   /* ✅ centered */
+    width: min(320px, 100%);
+    margin: 0 auto;
+  }
+
+  .keypad{
+    margin-top: 8px;
+    margin-bottom: 0;   /* reduce space below keypad */
+    max-width: 320px;
+  }
+
+  .kpGrid{ gap: 7px; }
+
+  .kpBtn{
+    padding: 9px 6px;
+    border-radius: 11px;
+    font-size: 17px;
+  }
+
+  .feedback{
+    margin-top: 8px;
+  }
+
+  .mainCard{
+    padding-bottom: 12px;
   }
 }
 
 /* tighten on very small screens */
 @media (max-width: 375px){
   .wrap{ padding: 12px; }
-  .question{ font-size: 40px; }
-  .input{ width: 100%; }
+  .question{ font-size: 38px; }
   .modalFact{ font-size: 20px; }
   .belowGrid{ gap: 10px; }
-}
-
-.correctToast{
-  height: 18px;
-  margin: 6px 0 10px;
-  text-align: center;
-  font-weight: 1000;
-  opacity: 0;
-  transform: translateY(2px) scale(0.98);
-  transition: opacity 120ms ease, transform 120ms ease;
-  pointer-events: none;
-}
-
-.correctToast.show{
-  opacity: 1;
-  transform: translateY(0) scale(1);
-  animation: correctPop 260ms ease-out;
-}
-
-@keyframes correctPop{
-  0%   { transform: translateY(2px) scale(0.98); }
-  60%  { transform: translateY(-1px) scale(1.02); }
-  100% { transform: translateY(0) scale(1.00); }
-}
-
-.keypad {
-  width: 100%;
-  max-width: 360px;
-  margin: 12px auto 0;
-}
-
-.kpGrid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-}
-
-.kpBtn {
-  padding: 12px 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(0,0,0,0.12);
-  background: rgba(255,255,255,0.9);
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.kpBtn:disabled {
-  opacity: 0.6;
-}
-
-.kpWide {
-  grid-column: span 1;
-  font-size: 14px;
-}
-
-.kpSubmitRow {
-  margin-top: 10px;
-}
-
-.kpSubmit {
-  width: 100%;
-  padding: 14px 12px;
-  border-radius: 14px;
-}
-
-/* Add to the end of App.css */
-
-/* ---------- Keypad ---------- */
-.keypad {
-  width: 100%;
-  max-width: 330px;
-  margin: 10px auto 0;
-}
-
-.kpGrid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-
-.kpBtn {
-  padding: 10px 8px;
-  border-radius: 12px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  background: rgba(255, 255, 255, 0.9);
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.kpBtn:disabled {
-  opacity: 0.6;
-}
-
-.kpWide {
-  font-size: 14px;
-}
-
-/* ---------- Mobile tightening ---------- */
-@media (max-width: 420px) {
-  .centerTop {
-    padding-top: 4px;
-    margin-top: 0;
-  }
-
-  .logoTop {
-    height: 22px; /* smaller logo */
-    margin-top: -2px; /* move up a bit */
-    margin-bottom: 4px;
-  }
-
-  .gameTitle {
-    font-size: 18px;
-    margin-bottom: 8px;
-  }
-
-  /* reduce space between question and answer row */
-  .question {
-    margin-bottom: 8px !important;
-  }
-
-  .answerRow {
-    margin-top: 6px !important;
-  }
-
-  .keypad {
-    margin-top: 8px;
-  }
-
-  .kpBtn {
-    padding: 9px 6px;
-    border-radius: 11px;
-    font-size: 17px;
-  }
 }
