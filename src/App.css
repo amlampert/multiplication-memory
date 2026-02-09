@@ -189,9 +189,9 @@
 }
 
 .input{
-  width: 240px;
+  width: 160px;
   max-width: 100%;
-  flex: 1 1 180px;
+  flex: 0 0 160px;
   padding: 10px 12px;
   font-size: 18px;
   border-radius: 12px;
