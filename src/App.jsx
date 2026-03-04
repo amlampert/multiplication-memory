@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import logo from "./assets/kokoro-logo.png";
 
-const STORAGE_KEY = "mult_game_v11";
+const STORAGE_KEY = "mult_game_v12";
 const TTL_MS = 24 * 60 * 60 * 1000;
 
 const MIN_LEVEL = 0;
@@ -31,9 +31,10 @@ function loadState() {
 
     if (!s.newStatus || typeof s.newStatus !== "object") s.newStatus = {};
     if (!Array.isArray(s.missedEver)) s.missedEver = [];
-    if (!Array.isArray(s.corrections)) s.corrections = [];
+    if (!Array.isArray(s.currentLevelCorrections)) s.currentLevelCorrections = [];
+    if (!Array.isArray(s.lowerLevelCorrections)) s.lowerLevelCorrections = [];
     if (!Array.isArray(s.reviewQueue)) s.reviewQueue = [];
-    if (typeof s.alt !== "number") s.alt = 0;
+    if (typeof s.currentSlot !== "boolean") s.currentSlot = true;
 
     if (s.level > MAX_LEVEL) return null;
 
@@ -48,9 +49,10 @@ function saveState(next) {
     level: next.level,
     newStatus: next.newStatus || {},
     missedEver: Array.isArray(next.missedEver) ? next.missedEver : [],
-    corrections: Array.isArray(next.corrections) ? next.corrections : [],
+    currentLevelCorrections: Array.isArray(next.currentLevelCorrections) ? next.currentLevelCorrections : [],
+    lowerLevelCorrections: Array.isArray(next.lowerLevelCorrections) ? next.lowerLevelCorrections : [],
     reviewQueue: Array.isArray(next.reviewQueue) ? next.reviewQueue : [],
-    alt: typeof next.alt === "number" ? next.alt : 0,
+    currentSlot: typeof next.currentSlot === "boolean" ? next.currentSlot : true,
     expiresAt: Date.now() + TTL_MS,
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -110,6 +112,18 @@ function pickRandomAny(level) {
   return makeFact(a, b);
 }
 
+function pickEasierLevelQuestion(level) {
+  // Pick a random fact from easier levels only (0 to level-1)
+  if (level <= 0) {
+    // No easier level, just pick from current level
+    return pickRandomAny(level);
+  }
+  const maxN = level - 1;
+  const a = randomInt(0, maxN);
+  const b = randomInt(0, maxN);
+  return makeFact(a, b);
+}
+
 /* ------------------ sounds ------------------ */
 function beep(ctx, freq, durMs, type = "sine", gain = 0.03) {
   const o = ctx.createOscillator();
@@ -140,7 +154,7 @@ function playCelebrate(ctx) {
   );
 }
 
-// light “action/click” sound for UI actions
+// light "action/click" sound for UI actions
 function playAction(ctx) {
   beep(ctx, 520, 45, "triangle", 0.02);
   setTimeout(() => beep(ctx, 740, 45, "triangle", 0.018), 35);
@@ -242,9 +256,10 @@ export default function App() {
   });
 
   const [missedEver, setMissedEver] = useState(saved?.missedEver ?? []);
-  const [corrections, setCorrections] = useState(saved?.corrections ?? []);
+  const [currentLevelCorrections, setCurrentLevelCorrections] = useState(saved?.currentLevelCorrections ?? []);
+  const [lowerLevelCorrections, setLowerLevelCorrections] = useState(saved?.lowerLevelCorrections ?? []);
   const [reviewQueue, setReviewQueue] = useState(saved?.reviewQueue ?? []);
-  const [alt, setAlt] = useState(saved?.alt ?? 0);
+  const [currentSlot, setCurrentSlot] = useState(saved?.currentSlot ?? true);
 
   const [question, setQuestion] = useState(null);
   const [input, setInput] = useState("");
@@ -255,7 +270,6 @@ export default function App() {
 
   // ---- NO BACK-TO-BACK REPEATS (except the intentional immediate re-ask after a miss) ----
   const lastQuestionKeyRef = useRef(null);
-  const forceNextIsNewRef = useRef(false);
 
   // wrong modal
   const [wrongModalOpen, setWrongModalOpen] = useState(false);
@@ -321,8 +335,8 @@ export default function App() {
 
   useEffect(() => {
     if (level == null) return;
-    saveState({ level, newStatus, missedEver, corrections, reviewQueue, alt });
-  }, [level, newStatus, missedEver, corrections, reviewQueue, alt]);
+    saveState({ level, newStatus, missedEver, currentLevelCorrections, lowerLevelCorrections, reviewQueue, currentSlot });
+  }, [level, newStatus, missedEver, currentLevelCorrections, lowerLevelCorrections, reviewQueue, currentSlot]);
 
   // ✅ Fix: after refresh, if we have a level but no current question, generate one.
   useEffect(() => {
@@ -461,9 +475,10 @@ export default function App() {
     setLevel(null);
     setNewStatus({});
     setMissedEver([]);
-    setCorrections([]);
+    setCurrentLevelCorrections([]);
+    setLowerLevelCorrections([]);
     setReviewQueue([]);
-    setAlt(0);
+    setCurrentSlot(true);
     setQuestion(null);
     setInput("");
     setFeedback("");
@@ -474,7 +489,6 @@ export default function App() {
     setGameOver(false);
     setJustCorrect(false);
     lastQuestionKeyRef.current = null;
-    forceNextIsNewRef.current = false;
   }
 
   function startAtLevel(lvl) {
@@ -484,9 +498,10 @@ export default function App() {
     setLevel(clamped);
     setNewStatus(ns);
     setMissedEver([]);
-    setCorrections([]);
+    setCurrentLevelCorrections([]);
+    setLowerLevelCorrections([]);
     setReviewQueue([]);
-    setAlt(0);
+    setCurrentSlot(true);
 
     const q = pickRandomRemainingNew(clamped, ns) || pickRandomAny(clamped);
     setQuestion(q);
@@ -500,15 +515,15 @@ export default function App() {
     setCelebrateNextLevel(null);
     setGameOver(false);
     setJustCorrect(false);
-    forceNextIsNewRef.current = false;
 
     saveState({
       level: clamped,
       newStatus: ns,
       missedEver: [],
-      corrections: [],
+      currentLevelCorrections: [],
+      lowerLevelCorrections: [],
       reviewQueue: [],
-      alt: 0,
+      currentSlot: true,
     });
   }
 
@@ -610,28 +625,71 @@ export default function App() {
     return { fact: makeFact(due.a, due.b), hidden: !!due.hidden };
   }
 
-  function pickNewLevelQuestion(nextLevel) {
-    return (
-      pickRandomRemainingNew(nextLevel, newStatus) || pickRandomAny(nextLevel)
-    );
+  function classifyCorrection(fact, currentLevel) {
+    // Returns 'current' if fact involves current level number, else 'lower'
+    return (fact.a === currentLevel || fact.b === currentLevel) ? 'current' : 'lower';
   }
 
-  function pickReviewQuestion(nextLevel) {
-    const due = popDueReviewItem();
-    if (due?.fact)
-      return { ...due.fact, __fromQueue: true, __hidden: due.hidden };
+  function addToCorrections(fact) {
+    const classification = classifyCorrection(fact, level);
+    const k = keyFor(fact.a, fact.b);
 
-    if (corrections.length > 0) {
-      const pick = corrections[randomInt(0, corrections.length - 1)];
-      return makeFact(pick.a, pick.b);
+    if (classification === 'current') {
+      let next = ensureCorrectionEntryPure(currentLevelCorrections, fact);
+      next = resetCorrectionProgressPure(next, fact);
+      setCurrentLevelCorrections(next);
+    } else {
+      let next = ensureCorrectionEntryPure(lowerLevelCorrections, fact);
+      next = resetCorrectionProgressPure(next, fact);
+      setLowerLevelCorrections(next);
     }
+  }
+
+  function creditCorrection(fact) {
+    const k = keyFor(fact.a, fact.b);
+
+    // Check current corrections
+    const currIdx = currentLevelCorrections.findIndex(c => c.key === k);
+    if (currIdx !== -1) {
+      const next = creditCorrectionPure(currentLevelCorrections, fact);
+      setCurrentLevelCorrections(next);
+      return { currentLevelCorrections: next, lowerLevelCorrections };
+    }
+
+    // Check lower corrections
+    const lowerIdx = lowerLevelCorrections.findIndex(c => c.key === k);
+    if (lowerIdx !== -1) {
+      const next = creditCorrectionPure(lowerLevelCorrections, fact);
+      setLowerLevelCorrections(next);
+      return { currentLevelCorrections, lowerLevelCorrections: next };
+    }
+
+    return { currentLevelCorrections, lowerLevelCorrections };
+  }
+
+  function pickFromCorrections(correctionsList) {
+    if (correctionsList.length === 0) return null;
+    const pick = correctionsList[randomInt(0, correctionsList.length - 1)];
+    return makeFact(pick.a, pick.b);
+  }
+
+  function pickLowerLevelReview() {
+    // Priority: due reviews → missedEver → random easier level
+    const due = popDueReviewItem();
+    if (due?.fact) return { ...due.fact, __fromQueue: true, __hidden: due.hidden };
 
     if (missedEver.length > 0 && Math.random() < 0.2) {
       const pick = missedEver[randomInt(0, missedEver.length - 1)];
       return makeFact(pick.a, pick.b);
     }
 
-    return pickRandomAny(nextLevel);
+    return pickEasierLevelQuestion(level);
+  }
+
+  function pickNewLevelQuestion(nextLevel) {
+    return (
+      pickRandomRemainingNew(nextLevel, newStatus) || pickRandomAny(nextLevel)
+    );
   }
 
   function chooseNonBackToBack(getCandidateFn, nextLevel) {
@@ -664,30 +722,62 @@ export default function App() {
     return getCandidateFn(nextLevel);
   }
 
-  function nextQuestion(nextLevel = level) {
-    if (nextLevel == null) return;
+  function getNextQuestion(slotOverride = null) {
+    const queueSize = currentLevelCorrections.length + lowerLevelCorrections.length;
+    const useSlot = slotOverride !== null ? slotOverride : currentSlot;
 
-    let isNew = alt % 2 === 0;
-
-    if (forceNextIsNewRef.current) {
-      isNew = true;
-      forceNextIsNewRef.current = false;
+    // Level 0 special case: no lower level, just repeat corrections
+    if (level === 0) {
+      if (currentLevelCorrections.length > 0) {
+        return pickFromCorrections(currentLevelCorrections);
+      }
+      return pickRandomRemainingNew(level, newStatus) || pickRandomAny(level);
     }
 
-    const q = isNew
-      ? chooseNonBackToBack(pickNewLevelQuestion, nextLevel)
-      : chooseNonBackToBack(pickReviewQuestion, nextLevel);
+    // CURRENT SLOT
+    if (useSlot) {
+      // Priority 1: Current-level corrections
+      if (currentLevelCorrections.length > 0) {
+        return pickFromCorrections(currentLevelCorrections);
+      }
 
-    setAlt((x) => x + 1);
-    setInput("");
-    setFeedback("");
-    setQuestion(q);
-    if (q) lastQuestionKeyRef.current = keyFor(q.a, q.b);
+      // Priority 2: Queue = 2 with both being current-level
+      if (queueSize === 2 && lowerLevelCorrections.length === 0) {
+        return pickFromCorrections(currentLevelCorrections);
+      }
+
+      // Priority 3: Normal new current-level question
+      return chooseNonBackToBack(pickNewLevelQuestion, level);
+    }
+
+    // LOWER SLOT
+    else {
+      // Priority 1: Queue = 2, both current-level (alternate between them)
+      if (queueSize === 2 &&
+          currentLevelCorrections.length === 2 &&
+          lowerLevelCorrections.length === 0) {
+        return pickFromCorrections(currentLevelCorrections);
+      }
+
+      // Priority 2: Lower-level corrections
+      if (lowerLevelCorrections.length > 0) {
+        return pickFromCorrections(lowerLevelCorrections);
+      }
+
+      // Priority 3: Lower level review
+      return chooseNonBackToBack(pickLowerLevelReview, level);
+    }
   }
 
-  function tryGraduate(statusObj, correctionsList) {
+  function tryGraduate(statusObj, correctionsOverride = null) {
     if (!allDone(statusObj)) return;
-    if ((correctionsList || []).length > 0) {
+
+    // Use override if provided, otherwise use current state
+    const currentCorr = correctionsOverride?.currentLevelCorrections ?? currentLevelCorrections;
+    const lowerCorr = correctionsOverride?.lowerLevelCorrections ?? lowerLevelCorrections;
+
+    // Must finish ALL corrections
+    if (currentCorr.length > 0 || lowerCorr.length > 0) {
       setFeedback("✅ Checklist done — finish Current Corrections to graduate.");
       return;
     }
@@ -709,7 +799,7 @@ export default function App() {
     setLevel(nextLvl);
     const ns = buildNewStatus(nextLvl);
     setNewStatus(ns);
-    setAlt(0);
+    setCurrentSlot(true);
 
     const q =
       chooseNonBackToBack(
@@ -723,45 +813,11 @@ export default function App() {
     setInput("");
     setFeedback("");
     setJustCorrect(false);
-    forceNextIsNewRef.current = false;
-  }
-
-  function markChecklistCorrectIfApplicable(f, correctionsAfterThisSubmit) {
-    const k = keyFor(f.a, f.b);
-    if (!(k in (newStatus || {}))) return;
-
-    if (newStatus[k] === true) {
-      tryGraduate(newStatus, correctionsAfterThisSubmit);
-      return;
-    }
-    const updated = { ...newStatus, [k]: true };
-    setNewStatus(updated);
-    tryGraduate(updated, correctionsAfterThisSubmit);
   }
 
   function triggerCorrectFlash() {
     setJustCorrect(true);
     window.setTimeout(() => setJustCorrect(false), 260);
-  }
-
-  function creditCorrectionEntryAndCleanup(correctionsList, fact, wasInCorrections) {
-    const k = keyFor(fact.a, fact.b);
-    const nextCorrections = creditCorrectionPure(correctionsList, fact);
-
-    const stillInCorrections = nextCorrections.some((c) => c.key === k);
-    if (wasInCorrections && !stillInCorrections) {
-      setReviewQueue((prev) =>
-        prev.filter(
-          (x) =>
-            !(
-              x.key === k &&
-              x.activateAtLevel === level &&
-              x.hidden === false
-            ),
-        ),
-      );
-    }
-    return nextCorrections;
   }
 
   function submit() {
@@ -778,37 +834,64 @@ export default function App() {
     const ctx = getAudio();
 
     if (user === question.answer) {
+      // CORRECT
       playSuccess(ctx);
       updateMissedEverOnRight(question);
 
-      const k = keyFor(question.a, question.b);
-      const wasInCorrections = corrections.some((c) => c.key === k);
+      // Credit correction if applicable (returns updated arrays)
+      const updatedCorrections = creditCorrection(question);
 
-      const nextCorrections = creditCorrectionEntryAndCleanup(
-        corrections,
-        question,
-        wasInCorrections,
-      );
-      setCorrections(nextCorrections);
+      // Update checklist if applicable
+      const k = keyFor(question.a, question.b);
+      const isChecklistItem = k in (newStatus || {});
+
+      if (isChecklistItem) {
+        if (newStatus[k] !== true) {
+          const updated = { ...newStatus, [k]: true };
+          setNewStatus(updated);
+          // Check graduation with updated status and corrections
+          tryGraduate(updated, updatedCorrections);
+        } else {
+          // Already marked, but still check graduation
+          tryGraduate(newStatus, updatedCorrections);
+        }
+      } else {
+        // Not a checklist item, but still check graduation (corrections might be done)
+        tryGraduate(newStatus, updatedCorrections);
+      }
 
       triggerCorrectFlash();
-      markChecklistCorrectIfApplicable(question, nextCorrections);
-
       setFeedback("✅ Correct!");
-      lastQuestionKeyRef.current = k;
 
-      nextQuestion(level);
+      // Toggle slot (except for level 0) and get next question
+      if (level !== 0) {
+        const nextSlot = !currentSlot;
+        setCurrentSlot(nextSlot);
+        const next = getNextQuestion(nextSlot);
+        setInput("");
+        setQuestion(next);
+        if (next) lastQuestionKeyRef.current = keyFor(next.a, next.b);
+      } else {
+        // Level 0: no slot toggling
+        const next = getNextQuestion();
+        setInput("");
+        setQuestion(next);
+        if (next) lastQuestionKeyRef.current = keyFor(next.a, next.b);
+      }
+
     } else {
+      // WRONG
       playFail(ctx);
       updateMissedEverOnWrong(question);
 
-      let nextCorrections = ensureCorrectionEntryPure(corrections, question);
-      nextCorrections = resetCorrectionProgressPure(nextCorrections, question);
-      setCorrections(nextCorrections);
+      // Add to corrections
+      addToCorrections(question);
 
+      // Schedule reviews
       scheduleCurrentLevelRepeats(question);
       scheduleNextLevelHiddenRepeats(question);
 
+      // Show modal
       setWrongModalFact(question);
       setWrongModalOpen(true);
       setFeedback("");
@@ -825,12 +908,11 @@ export default function App() {
     setWrongModalOpen(false);
     setInput("");
 
-    forceNextIsNewRef.current = true;
-
-    setQuestion(wrongModalFact); // immediate re-ask (ONLY after miss)
-    if (wrongModalFact)
+    // Immediate re-ask (DON'T toggle slot)
+    setQuestion(wrongModalFact);
+    if (wrongModalFact) {
       lastQuestionKeyRef.current = keyFor(wrongModalFact.a, wrongModalFact.b);
-
+    }
     setWrongModalFact(null);
 
     if (!useKeypad) setTimeout(() => inputRef.current?.focus(), 0);
@@ -929,6 +1011,7 @@ export default function App() {
       <div className="centerTop">
         <img className="logoTop" src={logo} alt="Kokoro Tutoring" />
         <div className="gameTitle">Multiplication Memory</div>
+        <div style={{ fontSize: '10px', color: '#999', marginTop: '4px' }}>v:DH3P</div>
       </div>
 
       <div className="card centerCard mainCard">
@@ -1009,12 +1092,38 @@ export default function App() {
         </div>
 
         <div className="card">
-          <div className="sideTitle negTitle">Current Corrections</div>
-          {corrections.length === 0 ? (
+          <div className="sideTitle negTitle">Current Level Corrections</div>
+          {currentLevelCorrections.length === 0 ? (
             <div className="empty">None 🎉</div>
           ) : (
             <div className="list">
-              {corrections
+              {currentLevelCorrections
+                .slice()
+                .sort((a, b) => (b.got || 0) - (a.got || 0))
+                .map((c) => (
+                  <div
+                    key={c.key}
+                    className={`row negRow ${correctionClass(c)}`}
+                  >
+                    <div className="rowLeft">
+                      {c.a}×{c.b}
+                    </div>
+                    <div className={`badge negBadge ${correctionClass(c)}`}>
+                      {c.got || 0}/{c.required || CORRECTIONS_REQUIRED}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="sideTitle negTitle">Lower Level Corrections</div>
+          {lowerLevelCorrections.length === 0 ? (
+            <div className="empty">None 🎉</div>
+          ) : (
+            <div className="list">
+              {lowerLevelCorrections
                 .slice()
                 .sort((a, b) => (b.got || 0) - (a.got || 0))
                 .map((c) => (
@@ -1060,9 +1169,9 @@ export default function App() {
       {wrongModalOpen && wrongModalFact && (
         <div className="modalOverlay" role="dialog" aria-modal="true">
           <div className="modal">
-            <div className="modalTitle">Sorry, that’s incorrect!</div>
+            <div className="modalTitle">Sorry, that's incorrect!</div>
             <div className="modalText">
-              Take a moment to memorize this fact, because we’ll show it to you
+              Take a moment to memorize this fact, because we'll show it to you
               again shortly:
             </div>
             <div className="modalFact">
@@ -1094,7 +1203,7 @@ export default function App() {
               onClick={closeCelebrate}
               disabled={!celebrateEnterArmed}
             >
-              Let’s go!
+              Let's go!
               <div className="tinyNote">[Enter]</div>
             </button>
             {!celebrateEnterArmed && (
