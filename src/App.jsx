@@ -770,7 +770,7 @@ export default function App() {
   }
 
   function tryGraduate(statusObj, correctionsOverride = null) {
-    if (!allDone(statusObj)) return;
+    if (!allDone(statusObj)) return false;
 
     // Use override if provided, otherwise use current state
     const currentCorr = correctionsOverride?.currentLevelCorrections ?? currentLevelCorrections;
@@ -779,19 +779,20 @@ export default function App() {
     // Must finish ALL corrections
     if (currentCorr.length > 0 || lowerCorr.length > 0) {
       setFeedback("✅ Checklist done — finish Current Corrections to graduate.");
-      return;
+      return false;
     }
 
     if (level === MAX_LEVEL) {
       playCelebrate(getAudio());
       setGameOver(true);
-      return;
+      return true;
     }
 
     const nextLvl = Math.min(MAX_LEVEL, level + 1);
     playCelebrate(getAudio());
     setCelebrateNextLevel(nextLvl);
     setCelebrateOpen(true);
+    return true;
   }
 
   function completeAdvanceLevel() {
@@ -845,38 +846,45 @@ export default function App() {
       const k = keyFor(question.a, question.b);
       const isChecklistItem = k in (newStatus || {});
 
+      let didGraduate = false;
       if (isChecklistItem) {
         if (newStatus[k] !== true) {
           const updated = { ...newStatus, [k]: true };
           setNewStatus(updated);
           // Check graduation with updated status and corrections
-          tryGraduate(updated, updatedCorrections);
+          didGraduate = tryGraduate(updated, updatedCorrections);
         } else {
           // Already marked, but still check graduation
-          tryGraduate(newStatus, updatedCorrections);
+          didGraduate = tryGraduate(newStatus, updatedCorrections);
         }
       } else {
         // Not a checklist item, but still check graduation (corrections might be done)
-        tryGraduate(newStatus, updatedCorrections);
+        didGraduate = tryGraduate(newStatus, updatedCorrections);
       }
 
       triggerCorrectFlash();
       setFeedback("✅ Correct!");
 
-      // Toggle slot (except for level 0) and get next question
-      if (level !== 0) {
-        const nextSlot = !currentSlot;
-        setCurrentSlot(nextSlot);
-        const next = getNextQuestion(nextSlot);
-        setInput("");
-        setQuestion(next);
-        if (next) lastQuestionKeyRef.current = keyFor(next.a, next.b);
+      // Only get next question if we didn't graduate
+      if (!didGraduate) {
+        // Toggle slot (except for level 0) and get next question
+        if (level !== 0) {
+          const nextSlot = !currentSlot;
+          setCurrentSlot(nextSlot);
+          const next = getNextQuestion(nextSlot);
+          setInput("");
+          setQuestion(next);
+          if (next) lastQuestionKeyRef.current = keyFor(next.a, next.b);
+        } else {
+          // Level 0: no slot toggling
+          const next = getNextQuestion();
+          setInput("");
+          setQuestion(next);
+          if (next) lastQuestionKeyRef.current = keyFor(next.a, next.b);
+        }
       } else {
-        // Level 0: no slot toggling
-        const next = getNextQuestion();
+        // Graduated - just clear input, keep current question visible
         setInput("");
-        setQuestion(next);
-        if (next) lastQuestionKeyRef.current = keyFor(next.a, next.b);
       }
 
     } else {
@@ -1011,7 +1019,7 @@ export default function App() {
       <div className="centerTop">
         <img className="logoTop" src={logo} alt="Kokoro Tutoring" />
         <div className="gameTitle">Multiplication Memory</div>
-        <div style={{ fontSize: '10px', color: '#999', marginTop: '4px' }}>v:DH3P</div>
+        <div style={{ fontSize: '10px', color: '#999', marginTop: '4px' }}>v:ML6R</div>
       </div>
 
       <div className="card centerCard mainCard">
@@ -1091,56 +1099,58 @@ export default function App() {
           </div>
         </div>
 
-        <div className="card">
-          <div className="sideTitle negTitle">Current Level Corrections</div>
-          {currentLevelCorrections.length === 0 ? (
-            <div className="empty">None 🎉</div>
-          ) : (
-            <div className="list">
-              {currentLevelCorrections
-                .slice()
-                .sort((a, b) => (b.got || 0) - (a.got || 0))
-                .map((c) => (
-                  <div
-                    key={c.key}
-                    className={`row negRow ${correctionClass(c)}`}
-                  >
-                    <div className="rowLeft">
-                      {c.a}×{c.b}
+        <div>
+          <div className="card">
+            <div className="sideTitle negTitle">Current Level Corrections</div>
+            {currentLevelCorrections.length === 0 ? (
+              <div className="empty">None 🎉</div>
+            ) : (
+              <div className="list">
+                {currentLevelCorrections
+                  .slice()
+                  .sort((a, b) => (b.got || 0) - (a.got || 0))
+                  .map((c) => (
+                    <div
+                      key={c.key}
+                      className={`row negRow ${correctionClass(c)}`}
+                    >
+                      <div className="rowLeft">
+                        {c.a}×{c.b}
+                      </div>
+                      <div className={`badge negBadge ${correctionClass(c)}`}>
+                        {c.got || 0}/{c.required || CORRECTIONS_REQUIRED}
+                      </div>
                     </div>
-                    <div className={`badge negBadge ${correctionClass(c)}`}>
-                      {c.got || 0}/{c.required || CORRECTIONS_REQUIRED}
-                    </div>
-                  </div>
-                ))}
-            </div>
-          )}
-        </div>
+                  ))}
+              </div>
+            )}
+          </div>
 
-        <div className="card">
-          <div className="sideTitle negTitle">Lower Level Corrections</div>
-          {lowerLevelCorrections.length === 0 ? (
-            <div className="empty">None 🎉</div>
-          ) : (
-            <div className="list">
-              {lowerLevelCorrections
-                .slice()
-                .sort((a, b) => (b.got || 0) - (a.got || 0))
-                .map((c) => (
-                  <div
-                    key={c.key}
-                    className={`row negRow ${correctionClass(c)}`}
-                  >
-                    <div className="rowLeft">
-                      {c.a}×{c.b}
+          <div className="card" style={{ marginTop: '14px' }}>
+            <div className="sideTitle negTitle">Lower Level Corrections</div>
+            {lowerLevelCorrections.length === 0 ? (
+              <div className="empty">None 🎉</div>
+            ) : (
+              <div className="list">
+                {lowerLevelCorrections
+                  .slice()
+                  .sort((a, b) => (b.got || 0) - (a.got || 0))
+                  .map((c) => (
+                    <div
+                      key={c.key}
+                      className={`row negRow ${correctionClass(c)}`}
+                    >
+                      <div className="rowLeft">
+                        {c.a}×{c.b}
+                      </div>
+                      <div className={`badge negBadge ${correctionClass(c)}`}>
+                        {c.got || 0}/{c.required || CORRECTIONS_REQUIRED}
+                      </div>
                     </div>
-                    <div className={`badge negBadge ${correctionClass(c)}`}>
-                      {c.got || 0}/{c.required || CORRECTIONS_REQUIRED}
-                    </div>
-                  </div>
-                ))}
-            </div>
-          )}
+                  ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
